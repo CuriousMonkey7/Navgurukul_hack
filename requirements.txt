@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+websockets
+pytesseract
+pillow
+faster-whisper
+python-multipart
+numpy
+ollama
+soundfile
+torch
+silero-vad

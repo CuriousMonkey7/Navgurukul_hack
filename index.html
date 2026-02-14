@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Interviewer - NavGurukul</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        h2 {
+            color: #333;
+        }
+        
+        .controls {
+            margin: 20px 0;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            margin-right: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        #endBtn {
+            background-color: #f44336;
+        }
+        
+        #endBtn:hover {
+            background-color: #da190b;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background-color: #e3f2fd;
+            color: #1976d2;
+            font-weight: 500;
+        }
+        
+        .status.processing {
+            background-color: #fff3cd;
+            color: #856404;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .conversation {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .question {
+            color: #1976d2;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .transcript {
+            color: #555;
+            margin: 10px 0;
+            font-style: italic;
+        }
+        
+        .scorecard {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .score-item {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 3px;
+        }
+        
+        .score-label {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .score-value {
+            float: right;
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .feedback {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body>
+
+<h2>🎯 AI-Driven Automated Interviewer</h2>
+
+<div class="controls">
+    <button id="startBtn" onclick="start()">Start Interview</button>
+    <button id="endBtn" onclick="endInterview()" disabled>End Interview & Get Feedback</button>
+</div>
+
+<div id="status" class="status" style="display: none;"></div>
+
+<div class="conversation">
+    <p id="question" class="question">AI: Click "Start Interview" and share your screen + microphone</p>
+    <p id="transcript" class="transcript"></p>
+</div>
+
+<div id="scorecardDiv" style="display: none;"></div>
+
+<script>
+
+let ws;
+let isInterviewing = false;
+let screenStream;
+let micStream;
+let recorder;
+let captureInterval;
+let isAIProcessing = false;  // Track if AI is generating response
+
+function updateStatus(message, isProcessingState = false) {
+    const statusDiv = document.getElementById("status");
+    statusDiv.innerText = message;
+    statusDiv.style.display = "block";
+    
+    if (isProcessingState) {
+        statusDiv.classList.add("processing");
+    } else {
+        statusDiv.classList.remove("processing");
+    }
+}
+
+async function start() {
+    try {
+        updateStatus("Requesting permissions...");
+        
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true
+        });
+
+        micStream = await navigator.mediaDevices.getUserMedia({
+            audio: true
+        });
+        
+        updateStatus("Connecting to AI interviewer...");
+        
+        ws = new WebSocket("ws://localhost:8000/ws");
+
+        ws.onopen = () => {
+            updateStatus("✓ Connected! Interview started.");
+            isInterviewing = true;
+            document.getElementById("startBtn").disabled = true;
+            document.getElementById("endBtn").disabled = false;
+            startCapture();
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            if (data.status === "processing") {
+                // AI is still thinking from previous question
+                updateStatus("🤔 AI is thinking... Please wait before speaking.", true);
+                return;
+            }
+            
+            if (data.status === "ready_no_speech") {
+                // No speech detected, unlock for next capture
+                isAIProcessing = false;
+                updateStatus("✓ Connected! You can speak now.", false);
+                return;
+            }
+            
+            if (data.status === "ready") {
+                // AI finished processing, ready for next input
+                isAIProcessing = false;
+                updateStatus("✓ Connected! You can speak now.", false);
+                
+                document.getElementById("question").innerText =
+                    "🤖 AI: " + data.question;
+
+                document.getElementById("transcript").innerText =
+                    "👤 You: " + data.transcript;
+            }
+        };
+        
+        ws.onerror = (error) => {
+            updateStatus("❌ Connection error. Please restart the server.");
+        };
+        
+        ws.onclose = () => {
+            updateStatus("Connection closed.");
+            stopCapture();
+        };
+
+    } catch (error) {
+        updateStatus("❌ Error: " + error.message);
+        console.error(error);
+    }
+}
+
+function startCapture() {
+    const video = document.createElement("video");
+    video.srcObject = screenStream;
+    video.play();
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    recorder = new MediaRecorder(micStream);
+    let audioChunks = [];
+
+    recorder.ondataavailable = e => {
+        audioChunks.push(e.data);
+    };
+
+    recorder.start();
+
+    captureInterval = setInterval(async () => {
+        if (!isInterviewing) return;
+        
+        // Don't capture if AI is still processing
+        if (isAIProcessing) {
+            console.log("AI is processing, skipping capture...");
+            return;
+        }
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+
+        const image = canvas.toDataURL("image/jpeg");
+
+        recorder.stop();
+
+        recorder.onstop = async () => {
+            const blob = new Blob(audioChunks);
+            audioChunks = [];
+
+            const reader = new FileReader();
+
+            reader.onloadend = () => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    // Mark as processing when sending data
+                    isAIProcessing = true;
+                    updateStatus("🎤 Processing your speech...", true);
+                    
+                    ws.send(JSON.stringify({
+                        image: image,
+                        audio: reader.result
+                    }));
+                }
+            };
+
+            reader.readAsDataURL(blob);
+            recorder.start();
+        };
+
+    }, 4000);
+}
+
+function stopCapture() {
+    isInterviewing = false;
+    
+    if (captureInterval) {
+        clearInterval(captureInterval);
+    }
+    
+    if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+    }
+    
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+    }
+    
+    if (micStream) {
+        micStream.getTracks().forEach(track => track.stop());
+    }
+    
+    document.getElementById("startBtn").disabled = false;
+    document.getElementById("endBtn").disabled = true;
+}
+
+async function endInterview() {
+    updateStatus("Ending interview and generating feedback...");
+    
+    stopCapture();
+    
+    if (ws) {
+        ws.close();
+    }
+    
+    try {
+        const response = await fetch("/evaluate");
+        const scorecard = await response.json();
+        
+        displayScorecard(scorecard);
+        updateStatus("✓ Interview completed!");
+        
+    } catch (error) {
+        updateStatus("❌ Error generating feedback: " + error.message);
+    }
+}
+
+function displayScorecard(data) {
+    const div = document.getElementById("scorecardDiv");
+    
+    const html = `
+        <div class="scorecard">
+            <h3>📊 Interview Evaluation Report</h3>
+            
+            <div class="score-item">
+                <span class="score-label">Technical Depth:</span>
+                <span class="score-value">${data.technical_depth}/10</span>
+            </div>
+            
+            <div class="score-item">
+                <span class="score-label">Clarity of Explanation:</span>
+                <span class="score-value">${data.clarity}/10</span>
+            </div>
+            
+            <div class="score-item">
+                <span class="score-label">Originality:</span>
+                <span class="score-value">${data.originality}/10</span>
+            </div>
+            
+            <div class="score-item">
+                <span class="score-label">Understanding of Implementation:</span>
+                <span class="score-value">${data.implementation}/10</span>
+            </div>
+            
+            <div class="feedback">
+                <strong>📝 Feedback:</strong><br>
+                ${data.feedback}
+            </div>
+        </div>
+    `;
+    
+    div.innerHTML = html;
+    div.style.display = "block";
+}
+
+</script>
+
+</body>
+</html>
