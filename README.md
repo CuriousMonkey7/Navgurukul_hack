@@ -63,34 +63,6 @@ The frontend captures screen frames and audio chunks via WebSocket. The server u
 
 ---
 
-## 🐛 Troubleshooting
-
-### "No valid speech detected"
-- Speak louder or closer to microphone
-- Check microphone permissions
-- Adjust `MIN_SPEECH_DURATION` in server.py
-
-### OCR not extracting text
-- Ensure text is clearly visible on screen
-- Use higher resolution screen share
-- Check if Tesseract is installed correctly
-
-### Ollama connection error
-- Verify Ollama is running: `ollama list`
-- Ensure model is downloaded: `ollama pull qwen2.5:3b`
-- Restart Ollama service
-
-### WebSocket connection failed
-- Check if server is running on port 8000
-- Ensure no firewall blocking localhost
-- Try restarting the server
-
-### Audio conversion fails
-- Install FFmpeg: `brew install ffmpeg` (macOS)
-- Check FFmpeg is in PATH: `ffmpeg -version`
-
----
-
 ## 📊 How It Works
 
 ```
