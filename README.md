@@ -63,7 +63,7 @@ The frontend captures screen frames and audio chunks via WebSocket. The server u
 
 ---
 
-## 📊 How It Works
+## How It Works
 
 ```
 ┌─────────────┐
